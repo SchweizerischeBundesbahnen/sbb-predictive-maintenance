@@ -95,7 +95,7 @@ class DataIngestion {
         }
     }
     /**
-     * 
+     * Process the indicator values.
      * @param sThingID Thing ID
      * @param oPropertySet Property set
      */
@@ -107,7 +107,7 @@ class DataIngestion {
         }
     }
     /**
-     * 
+     * Fetch the Thing from the service.
      * @param sThingID 
      */
     async getThingType(sThingID) {
