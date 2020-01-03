@@ -14,6 +14,9 @@ SAP provides an SDK to communicate with the SAP IoT Application Enablement (http
 require('dotenv').config();
 const ApplicationServicesSDK = require('iot-application-services-sdk-nodejs');
 
+/**
+ * Class acting as a NodeWrapper of SAP IoT Application Enablement.
+ */
 class DataIngestion {
     constructor() {
         this._oIoTSDK = new ApplicationServicesSDK();
@@ -24,6 +27,10 @@ class DataIngestion {
         this._aEquipments = {};
         this._dRetentionPeriodStart = null;
     }
+    /**
+     * Fetch equipment enablement service.
+     * @param sEquipmentID Equipment identifier
+     */
     async getEquipment(sEquipmentID) {
         if (this._aEquipments[sEquipmentID]) {
             return this._aEquipments[sEquipmentID];
@@ -72,6 +79,11 @@ class DataIngestion {
             }
         }
     }
+    /**
+     * Fetch equipment with filter field and value from enablement service.
+     * @param sFilter Filter field
+     * @param sFilterValue Filter value
+     */
     async getEquipmentByFilter(sFilter, sFilterValue) {
         try {
             return await this._oAssetCentralSDK.request({
@@ -82,6 +94,11 @@ class DataIngestion {
             console.log("Error reading equipment with filter: " + sFilter + " value: " + sFilterValue + " from asset central: " + JSON.stringify(oError));
         }
     }
+    /**
+     * 
+     * @param sThingID Thing ID
+     * @param oPropertySet Property set
+     */
     async preprocessIndicatorValues(sThingID, oPropertySet) {
         //preprocessIndicatorValues indicator values 
         for (const sKey of Object.keys(oPropertySet)) {
@@ -89,6 +106,10 @@ class DataIngestion {
             await this.addIndicatorForProcessing(sThingID, sKey, this._typeConversion(oPropertySet[sKey]));
         }
     }
+    /**
+     * 
+     * @param sThingID 
+     */
     async getThingType(sThingID) {
         try {
             //get thing details
@@ -102,6 +123,12 @@ class DataIngestion {
             return null;
         }
     }
+    /**
+     * Add the indicators to the list for processing.
+     * @param sThingID Thing ID
+     * @param sIndicatorGroup Indicator group
+     * @param oIndicatorValue Indicator value
+     */
     async addIndicatorForProcessing(sThingID, sIndicatorGroup, oIndicatorValue) {
         let oIndicatorGroup = this._aIndicatorsToProcess.find(oIndicator => oIndicator.ThingID === sThingID && oIndicator.IndicatorGroup === sIndicatorGroup);
         if (!oIndicatorGroup) {
@@ -129,12 +156,22 @@ class DataIngestion {
             else oExistingIndicator = Object.assign(oExistingIndicator, oIndicatorValue);
         }
     }
+    /**
+     * Add indicator values to indicators in processing list.
+     */
     async processIndicatorValues() {
         while (this._aIndicatorsToProcess.length > 0) {
             let oIndicatorToProcess = this._aIndicatorsToProcess.shift();
             await this.putIndicatorValues(oIndicatorToProcess.ThingID, oIndicatorToProcess.ThingType, oIndicatorToProcess.IndicatorGroup, oIndicatorToProcess.IndicatorValues);
         }
     }
+    /**
+     * Add indicator values to thing.
+     * @param sThingID Thing ID
+     * @param sThingType Thing type
+     * @param sIndicatorGroup Indicator group
+     * @param aIndicatorValues Indicator values
+     */
     async putIndicatorValues(sThingID, sThingType, sIndicatorGroup, aIndicatorValues) {
         try {
             this._dRetentionPeriodStart = this._dRetentionPeriodStart === null ? new Date(new Date().setDate(new Date().getDate() - await this._getRetentionPeriodInDays())) : this._dRetentionPeriodStart;
@@ -145,11 +182,16 @@ class DataIngestion {
             };
             //put dat data to the sky..
             if (oRequest.body.value.length > 0) {
-                //console.log("put indicator values "+ JSON.stringify(oRequest));
                 await this._oIoTSDK.request(oRequest);
             }
         } catch (oError) { console.log("Error while adding indicator values: " + JSON.stringify(oError)); }
     }
+    /**
+     * Get all the objects within oObject that have a key==sKey with a value==sValue. 
+     * @param oObject The object to extract the objects from
+     * @param sKey The key for the comparison
+     * @param sValue The value for the comparison
+     */
     _getObjects(oObject, sKey, sValue) {
         let aObjects = [];
         for (let i in oObject) {
@@ -162,12 +204,19 @@ class DataIngestion {
         }
         return aObjects;
     }
+    /**
+     * Convert the types within the objects.
+     * @param oObject The object for the conversion
+     */
     _typeConversion(oObject) {
         for (const sKey of Object.keys(oObject)) {
             if (/^I_/.test(sKey)) oObject[sKey] = /(True)/.test(oObject[sKey]) ? true : /(False)/.test(oObject[sKey]) ? false : !isNaN(parseFloat(oObject[sKey])) ? parseFloat(oObject[sKey]) : oObject[sKey];
         }
         return oObject;
     }
+    /**
+     * Get retention period from enablement service.
+     */
     async _getRetentionPeriodInDays() {
         try {
             let oRetentionPeriodResponse = await this._oIoTSDK.request({ url: "/TimeseriesRetentionPeriod", method: 'GET' });
@@ -187,9 +236,12 @@ module.exports = DataIngestion;
 Single entries in the batch file have to be sent individually. Each entry will be attached to equipment in SAP PdMS. A linking of the identifier from the batch file to the equipment is therefore necessary. The script achieves this by looking up the equipment before sending the data.
 
 ```javascript
+/**
+ * Assign RawObjects to Vehicles
+ * @param aRawObjects The raw objects
+ */
 async function preprocessRawObect(aRawObjects) {
     for (let i = 0; i < aVehicleMapping.length; i++) {
-        //assign RawObjects to Vehicles
         aVehicleMapping[i].aRawObjects = aRawObjects.filter(oRawObject => oRawObject.VehicleID === aVehicleMapping[i].VehicleID); try {
             let oResponse = await oDataIngestion.getEquipment(aVehicleMapping[i].EquipmentID);
             if (!!oResponse.thingID) {
@@ -207,8 +259,14 @@ async function preprocessRawObect(aRawObjects) {
 ```
 
 ```javascript
+/**
+ * Recursive evaluation of equipmennts and subordinate equipments concerning relevant mounting positions
+ * @param oDataIngestion The ingestion data
+ * @param oEquipment The equipment
+ * @param sTimeStamp The date
+ * @param oRawObject The raw object
+ */
 async function preprocessRawObectRecursive(oDataIngestion, oEquipment, sTimeStamp, oRawObject) {
-    //recursive evaluation of equipmennts and subordinate equipments concerning relevant mounting positions
     if (!!oEquipment.thingID && !!oRawObject.propertySets) {
         for (const sKey of Object.keys(oRawObject.propertySets)) {
             oRawObject.propertySets[sKey]._time = sTimeStamp;
